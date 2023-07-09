@@ -1,8 +1,12 @@
 #code for QRM gate counts and circuit constructions
+#Praveen Jayakumar, July 2023
 
 import math
 import numpy as np
- 
+import copy
+import tequila
+from qiskit import QuantumCircuit
+
 def binom_sum(m,start,end):
     if start > end:
         print('Error, start > end')
@@ -12,82 +16,65 @@ def binom_sum(m,start,end):
         return
     return np.sum([math.comb(m, i) for i in range(start, end + 1)])
 
-def naive_CX_count(r, m):
-    """
-    Gate counts for naive implementations, with no row transforms
-    """
-    if r>m:
-        print('Invalid parameters r = {} > m = {}'.format(r, m))
-        return
-    if r ==2 and m == 2:
-        return 4
-    return np.sum([math.comb(m, i)*(2**(m-i) - 1) for i in range(r+1)])
-
-def std_CX_count(r, m):
-    """
-    Gate counts for standard row transformed G(r, m)
-    """
-    if r>m:
-        print('Invalid parameters r = {} > m = {}'.format(r, m))
-        return
-    if r == m:
-        return 0
-    if r == m-r-1:
-        return binom_sum(m, 0, m-r-1)*(2**(r+1)-1)
-    return binom_sum(m, m-r, r)*(2**(m-r) - 1) + binom_sum(m, 0, m-r-1)*(2**(r+1)-1)#np.sum([math.comb(m, i)*(2**(m-i) - 1) for i in range(r+1)])
-
-def Urr_CX_count(r):
-    """
-    Gate counts for recursive U_{r,r}
-    """
-    if r ==1:
-        return 1 
-    g = 2**(r-1)
-    return g + 2*Urr_CX_count(r-1)
-
-def rec_CX_count(r, m):
-    """
-    Gate counts for recursive U_{r,m}
-    """
-    if r>m:
-        print('Invalid parameters r = {} > m = {}'.format(r, m))
-        return
-    if r==m:
-        return Urr_CX_count(r)
-    else:
-        return binom_sum(m-1, 0, r) + math.comb(m-1, m-r-1) + 2*rec_CX_count(r, m-1)
-
-def get_full_matrix(m):
-    """
-    Full tensored matrix [[1, 1], [0, 1]]^\otimes m
-    """
-    B = [[1, 1], [0, 1]]
-    F = [1]
-    for _ in range(m):
-        F = np.kron(F, B)
-    return F
-
-def Hrm(r, m):
-    #returns parity check for RM(r, m)
-    F = get_full_matrix(m)
-    return [F[i] for i in range(len(F)) if sum(F[i]) >=2**(r+1)]
-
-def Grm(r, m):
-    #generator for RM(r, m)
-    F = get_full_matrix(m)
-    return [F[i] for i in range(len(F)) if sum(F[i]) >=2**(m-r)]
-
-def reorder_wt(M, reverse = True):
+def reorder_wt(G, reverse = True):
     #orders rows with weight
-    return np.array(sorted(M, key=lambda x: np.sum(x), reverse=reverse))
+    return np.array(sorted(G, key=lambda x: np.sum(x), reverse=reverse))
 
-def Hqrm(r, m):
+def filter_wt(G, weights):
+    Gnew = []
+    for row in G:
+        if sum(row) in weights:
+            Gnew.append(row)
+    return Gnew
+
+def get_indexes(row):
+    l = []
+    for i, r in enumerate(row):
+        if r == 1:
+            l.append(i)
+    return l
+
+def leading_bit_index(row):
+    N = len(row)
+    for i in range(N):
+        if row[i] == 1:
+            return i
+    return N-1
+
+def get_eval_set(row):
+    m = int(np.log2(len(row)))
+    i = leading_bit_index(row)
+    bin_i = bin(i)[2:]
+    s = []
+    n = 0
+    while i > 0:
+        if i%2 ==1:
+            s.append(n)
+        i = i//2
+        n+=1
+    return s
+
+def get_int(l):
     '''
-    parity check for the QRM CSS code
-    returns H with (X|Z) convention
+    int representation of list [1, 0, 1, 0] is 5
     '''
-    H_rm = Hrm(r, m)
-    z = np.zeros_like(H_rm)
-    Hx = np.concatenate((H_rm, z), axis = 1)
-    Hz = np.concatenate((z, H_rm), axis = 1)
-    return np.concatenate((Hx, Hz), axis =0)
+    return np.sum([1<<i for i in l])
+
+def min_set(in_ind, r, as_int = False):
+    ind = copy.copy(in_ind)
+    s = [copy.copy(ind)]
+    for i in range(len(ind) + r):
+        if len(ind) >= r:
+            break
+        if i not in ind:
+            new = [se + [i] for se in s]
+            s = new + s
+            ind.append(i)
+    if as_int:
+        return [get_int(se) for se in s]
+    return s
+
+def get_qiskit_circuit(circuit):
+    qasmstr = tequila.export_open_qasm(circuit)
+    qiskit_cir = QuantumCircuit.from_qasm_str(qasmstr)
+    return qiskit_cir
