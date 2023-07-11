@@ -78,3 +78,21 @@ def get_qiskit_circuit(circuit):
     qasmstr = tequila.export_open_qasm(circuit)
     qiskit_cir = QuantumCircuit.from_qasm_str(qasmstr)
     return qiskit_cir
+
+def check_if_same_circuit(circuit_1, circuit_2, tol = 1e-6):
+    #checks if two tequila circuits are the same by simulating
+    wf1 = tequila.simulate(circuit_1)
+    wf2 = tequila.simulate(circuit_2)
+    wf3 = wf1 - wf2
+    diff = sum(np.abs(list(wf3.values())))
+    return diff < tol
+
+def puncture_row(row, remove_ind = [0]):
+    new_row = []
+    for i, r in enumerate(row):
+        if i not in remove_ind:
+            new_row.append(row)
+    return new_row
+
+def puncture_matrix(M, remove_ind = [0]):
+    return [puncture_row(row, remove_ind=remove_ind) for row in M]

@@ -2,7 +2,20 @@
 #Praveen Jayakumar, July 2023
 
 import numpy as np
-from qrm_utils import *
+from qrm_utils import filter_wt, leading_bit_index, get_eval_set, min_set
+
+def apply_qubit_partition(i, qubit_list):
+    #applies Plotkin-i partition of passed qubit_list
+    m = int(np.log2(len(qubit_list)))
+    row = get_QRM_generators_r1r2(1, 1, m)[m-i]
+    q1 = []
+    q2 = []
+    for j, q in enumerate(row):
+        if q == 0:
+            q1.append(qubit_list[j])
+        else:
+            q2.append(qubit_list[j])
+    return q1, q2
 
 def get_full_matrix(m):
     """
@@ -52,6 +65,12 @@ def get_QRM_generator(C1_params: tuple, C2_params: tuple):
     G1q = filter_wt(G1, weights = [2**(i) for i in range(m1 - r1, r2 + 1)])
     return (G2perp, G1q)
 
+def get_QRM_generators_r1r2(r1, r2, m):
+    #assumes r2>=r1
+    G1 = Grm(r2, m)
+    G1q = filter_wt(G1, weights = [2**(m-i) for i in range(r1, r2 + 1)])
+    return G1q
+
 def get_R(G):
     '''
     Row transform matrix for G(r, m)
@@ -59,6 +78,8 @@ def get_R(G):
     '''
     k = len(G)
     R = []
+    if k == 0:
+        return [[]]
     indexes = [leading_bit_index(row) for row in G]
     eval_sets = [get_eval_set(row) for row in G]
     r = max([len(s) for s in eval_sets])
