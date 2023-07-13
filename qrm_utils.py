@@ -8,6 +8,7 @@ import tequila
 from qiskit import QuantumCircuit
 
 def binom_sum(m,start,end):
+    #includes start and end
     if start > end:
         print('Error, start > end')
         return
