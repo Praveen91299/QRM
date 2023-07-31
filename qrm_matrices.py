@@ -2,7 +2,7 @@
 #Praveen Jayakumar, July 2023
 
 import numpy as np
-from qrm_utils import filter_wt, leading_bit_index, get_eval_set, min_set
+from qrm_utils import filter_wt, leading_bit_index, get_eval_set, min_set, puncture_matrix
 
 def apply_qubit_partition(i, qubit_list):
     #applies Plotkin-i partition of passed qubit_list
@@ -64,6 +64,18 @@ def get_QRM_generator(C1_params: tuple, C2_params: tuple):
     G1 = Grm(r1, m1)
     G1q = filter_wt(G1, weights = [2**(i) for i in range(m1 - r1, r2 + 1)])
     return (G2perp, G1q)
+
+def get_QRM_punc_generator(C1_params: tuple, C2_params: tuple):
+    G2perp, G1q = get_QRM_generator(C1_params=C1_params, C2_params=C2_params)
+    G2perpt = puncture_matrix(G2perp)
+    G1qp = puncture_matrix(G1q)
+    G2perpp = []
+    for row in G2perpt:
+        if np.sum(row) != len(row):
+            G2perpp.append(row)
+        else:
+            G1qp.append(row)
+    return (G2perpp, G1qp)
 
 def get_QRM_generators_r1r2(r1, r2, m):
     #assumes r2>=r1

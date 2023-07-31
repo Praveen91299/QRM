@@ -2,8 +2,10 @@
 #Praveen Jayakumar, July 2023
 
 import tequila
+import stim
 from qrm_utils import *
 from qrm_matrices import *
+from stim_utils import stim_CNOT_list, stim_H_list, tequila_to_stim
 
 def canonical_CSS(G, n_qubits, qubit_list = None, only_cnots = False):
     '''
@@ -60,6 +62,61 @@ def QRM_std_circuit(r, m, qubit_list = None, transform_rows = True, only_cnots =
         Gsnew = Gs
     circuit, qubit_info = canonical_CSS(Gsnew, n_qubits = 2**m, only_cnots = only_cnots, qubit_list=qubit_list)
     return circuit, qubit_info
+
+def QRM_punc_std_circuit(r, m, qubit_list = None, transform_rows = True, only_cnots = False):
+    '''
+    set transform_rows = False for Naive encoder.
+    '''
+    def R_Gs(Gl):
+        
+        if len(G) == 0:
+            return G
+        R = get_R_punc(G)
+        return np.einsum('ap, pb', R, G) % 2
+    params = (r, m)
+    Gs = get_QRM_punc_generator(params, params)
+    Gs_transformed = R_Gs(Gs)
+    if transform_rows:
+        Gsnew = Gs_transformed
+    else:
+        Gsnew = Gs
+    circuit, qubit_info = canonical_CSS(Gsnew, n_qubits = 2**m, only_cnots = only_cnots, qubit_list=qubit_list)
+    return circuit, qubit_info
+
+class QRMcircuit:
+    '''
+    Circuit object for recursive QRM encoders, complete when required.
+    '''
+    def __init__(self):
+        self.circuit = tequila.QCircuit()
+    
+    def CX(self, control=[], target=[]):
+        self.circuit += tequila.gates.CX(control=control, target=target)
+    
+    def H(self, target=[]):
+        self.circuit += tequila.gates.H(target=target)
+    
+    def get_circuit(self, circ_type ='tequila'):
+        if circ_type == 'tequila':
+            return self.circuit
+        elif circ_type == 'stim':
+            return tequila_to_stim(self.circuit)
+    
+    @property
+    def depth(self):
+        return stim_to_tequila(self.circuit).depth
+    
+    @property
+    def gate_count(self):
+        return len(stim_to_tequila(self.circuit).gates)
+    
+    def __add__(self, other):
+        result_circuit = self.circuit + other.circuit
+        return QRMcircuit(result_circuit)
+    
+    def __repr__(self) -> str:
+        return self.circuit.__repr__()
+        
 
 def QRM_rec_circuit(r, m, partitions = [], qubit_list = None, only_cnots = False):
     U = tequila.QCircuit()
@@ -119,3 +176,6 @@ def QRM_rec_circuit(r, m, partitions = [], qubit_list = None, only_cnots = False
     ent_q += qent1 + info_1[1] + info_2[1]
     msg_q = [leading_bit_index(row) for row in get_QRM_generators_r1r2(m-r, r, m)] #This is a placeholder. Need to figure out message bit pass recursively, should be msg_q + something
     return U, (msg_q, ent_q)
+
+def QRM_rec_assym_circuit(r, m, r_in, m_in, partitions = [], qubit_list = None, only_cnots = False):
+    return

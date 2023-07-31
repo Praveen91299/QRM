@@ -92,7 +92,7 @@ def puncture_row(row, remove_ind = [0]):
     new_row = []
     for i, r in enumerate(row):
         if i not in remove_ind:
-            new_row.append(row)
+            new_row.append(r)
     return new_row
 
 def puncture_matrix(M, remove_ind = [0]):

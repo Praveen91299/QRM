@@ -26,16 +26,50 @@ def std_CX_count(r, m):
 
 def Urr_CX_count(r):
     """
-    Gate counts for recursive U_rr
+    Gate counts for recursive U_rr, quantum or classical
     """
     if r ==1:
         return 1 
     g = 2**(r-1)
     return g + 2*Urr_CX_count(r-1)
 
+def Urm_CX_count(r, m):
+    '''
+    Similar to Urr_CX_count(), for general G(r, m) encoding, quantum or classical
+    '''
+    if r == 0:
+        return 2**m - 1
+    if r == m:
+        return Urr_CX_count(m)
+    return binom_sum(m-1, 0, r) + 2*Urm_CX_count(r, m-1)  # (u, u) + (0, v) -> (u, 0) + (0, u+v)
+
+def punc_Urm_CX_count(r, m, state_prep = False):
+    '''
+    punctured, classical code state encoder
+
+    Similar to Urr_CX_count(), for general G(r, m) encoding
+    '''
+    if state_prep:
+        e = -1
+    else:
+        e = 0
+    
+    if r == 0:
+        return 2**m - 2
+    if r + 1 == m:
+        if not state_prep:
+            return 2**r + punc_Urm_CX_count(r-1, r, state_prep=state_prep) + Urr_CX_count(r)
+    if r == m:
+        assert state_prep
+        if r == 1:
+            return 0
+        return 2**(r-1) - 1 + punc_Urm_CX_count(r-1, r-1, state_prep=state_prep) + Urr_CX_count(r-1)
+    return binom_sum(m-1, 0, r) + e + punc_Urm_CX_count(r, m-1, state_prep=state_prep) + Urm_CX_count(r, m-1)  # (u, u) + (0, v) -> (u, 0) + (0, u+v)
+
+
 def rec_CX_count(r, m):
-    if r>m:
-        print('Invalid parameters r = {} > m = {}'.format(r, m))
+    if r>m or r < (m-1)//2:
+        print('Invalid parameters r = {}, m = {}'.format(r, m))
         return
     if r==m:
         return Urr_CX_count(r)
@@ -44,15 +78,11 @@ def rec_CX_count(r, m):
     else:
         return binom_sum(m-1, m-r, r) + math.comb(m-1, m-r-1) + 2*rec_CX_count(r, m-1)
 
-def Urm_CX_count(r, m):
-    if r == 0:
-        return 2**m - 1
-    if r == m:
-        return Urr_CX_count(m)
-    return binom_sum(m-1, 0, r) + 2*Urm_CX_count(r, m-1)  # (u, u) + (0, v) -> (u, 0) + (0, u+v)
-
 def rec_CX_count_assym(r, m, r_in, m_in):
-    #gate counts for assymmetric QRM code
+    '''
+    gate counts for assymmetric QRM code
+    verified July 29
+    '''
     if 2*r_in + 1 > m_in:
         if m == r_in:
             return Urr_CX_count(m)
@@ -61,30 +91,30 @@ def rec_CX_count_assym(r, m, r_in, m_in):
             return Urm_CX_count(r_in, m)
     return binom_sum(m-1, r, r_in) + 2*rec_CX_count_assym(r-1, m-1, r_in, m_in)
 
-def rec_punc(r, m):
-    return 
-
-def rec_punc_zero(r, m, rin):
-    #incomplete!
-    return binom_sum(m-1, r, rin) + 1 + rec_punc_zero(r-1, m-1, rin)
-
-def Urr_CX_count_punc_no1(r):
-    """
-    Gate counts for recursive U_rr
-    """
-    if r ==1:
-        return 0
-    g = 2**(r-1) - 1
-    return g + Urr_CX_count_punc_no1(r-1) + Urr_CX_count(r-1)
-
-def rec_CX_count_assym_punc(r, m, rin, state_prep = False):
-    #gate counts for assymmetric QRM code
-    if 2*r + 1 > m:
+def rec_CX_count_punc(r, m, classical=False, state_prep=False):
+    '''
+    CNOT gate counts for recursive encoder of punctured QRM(r, m)^*
+    Verified July 29
+    '''
+    if classical:
+        return punc_Urm_CX_count(r, m, state_prep=state_prep)
+    if r >= m or r < (m-1)//2:
+        print('Invalid Parameters r, m: {}, {}\nRequire r < m'.format(r, m))
         return
-    if r ==-1:
-        if state_prep:
-            return Urr_CX_count_punc_no1(m)
-        return Urr_CX_count(m)
-    if state_prep:
-        return binom_sum(m-1, r, rin) + rec_CX_count_assym_punc(r-1, m-1, rin, state_prep=state_prep) + rec_CX_count_assym(r-1, m-1, rin)
-    return binom_sum(m-1, r, rin) + 1 + rec_CX_count_assym_punc(r-1, m-1, rin, state_prep=state_prep) + rec_CX_count_assym(r-1, m-1, rin)
+    if m==1 and r ==0:
+        return 0
+    if m-r-1 == r:
+        return math.comb(m-1, m-r-1) + rec_CX_count_punc(r, m-1, state_prep=state_prep) + rec_CX_count(r, m-1)
+    if m == r+1:
+        return 2**r + rec_CX_count_punc(r-1, r, state_prep=state_prep) + Urr_CX_count(r)
+    return binom_sum(m-1, m-r, r) + math.comb(m-1, m-r-1) + rec_CX_count_punc(r, m-1, state_prep=state_prep) + rec_CX_count(r, m-1)
+
+def rec_CX_count_assym_punc(r, m, r_in, m_in, state_prep = False):
+    #gate counts for assymmetric QRM code
+    if 2*r_in + 1 >= m_in: #quantum state
+        if r == 2*r_in - m_in + 1:
+            return punc_Urm_CX_count(r, m)
+    if 2*r_in + 1 < m_in: #classical state
+        if r == 0:
+            return punc_Urm_CX_count(r, m)
+    return binom_sum(m-1, r, r_in) + rec_CX_count_assym_punc(r-1, m-1, r_in, m_in, state_prep=state_prep) + rec_CX_count_assym(r-1, m-1, r_in, m_in)
