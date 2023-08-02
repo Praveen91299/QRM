@@ -83,6 +83,9 @@ def rec_CX_count_assym(r, m, r_in, m_in):
     gate counts for assymmetric QRM code
     verified July 29
     '''
+    if r > m or r < -1:
+        print('Invalid parameters r, m : {}, {}'.format(r, m))
+        return
     if 2*r_in + 1 > m_in:
         if m == r_in:
             return Urr_CX_count(m)
@@ -110,11 +113,12 @@ def rec_CX_count_punc(r, m, classical=False, state_prep=False):
     return binom_sum(m-1, m-r, r) + math.comb(m-1, m-r-1) + rec_CX_count_punc(r, m-1, state_prep=state_prep) + rec_CX_count(r, m-1)
 
 def rec_CX_count_assym_punc(r, m, r_in, m_in, state_prep = False):
+    
     #gate counts for assymmetric QRM code
     if 2*r_in + 1 >= m_in: #quantum state
         if r == 2*r_in - m_in + 1:
-            return punc_Urm_CX_count(r, m)
+            return punc_Urm_CX_count(r, m, state_prep=state_prep)
     if 2*r_in + 1 < m_in: #classical state
         if r == 0:
-            return punc_Urm_CX_count(r, m)
+            return punc_Urm_CX_count(r, m, state_prep=state_prep)
     return binom_sum(m-1, r, r_in) + rec_CX_count_assym_punc(r-1, m-1, r_in, m_in, state_prep=state_prep) + rec_CX_count_assym(r-1, m-1, r_in, m_in)

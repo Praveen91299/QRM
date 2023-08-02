@@ -2,15 +2,30 @@
 #Praveen Jayakumar, July 2023
 
 import numpy as np
-from qrm_utils import filter_wt, leading_bit_index, get_eval_set, min_set, puncture_matrix
+from qrm_utils import filter_wt, leading_bit_index, get_eval_set, min_set, puncture_matrix, puncture_row
 
-def apply_qubit_partition(i, qubit_list):
+def apply_qubit_partition(i, m, qubit_list):
     #applies Plotkin-i partition of passed qubit_list
     m = int(np.log2(len(qubit_list)))
     row = get_QRM_generators_r1r2(1, 1, m)[m-i]
     q1 = []
     q2 = []
     for j, q in enumerate(row):
+        if q == 0:
+            q1.append(qubit_list[j])
+        else:
+            q2.append(qubit_list[j])
+    return q1, q2
+
+def apply_punc_qubit_partition(i, m, qubit_list, punc_bit_list = [0]):
+    #applies Plotkin-i partition of passed qubit_list
+    
+    row = get_QRM_generators_r1r2(1, 1, m)[m-i]
+    p_row = puncture_row(row, punc_bit_list)
+
+    q1 = []
+    q2 = []
+    for j, q in enumerate(p_row):
         if q == 0:
             q1.append(qubit_list[j])
         else:
@@ -79,6 +94,10 @@ def get_QRM_punc_generator(C1_params: tuple, C2_params: tuple):
 
 def get_QRM_generators_r1r2(r1, r2, m):
     #assumes r2>=r1
+    if r2 < r1:
+        print('Invalid parameters r1: {}, r2: {}, m: {}'.format(r1, r2, m))
+    if m == 0:
+        return [[1]]
     G1 = Grm(r2, m)
     G1q = filter_wt(G1, weights = [2**(m-i) for i in range(r1, r2 + 1)])
     return G1q
