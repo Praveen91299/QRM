@@ -1,4 +1,4 @@
-#generators and other matrices
+#generators and other matrices for QRM codes
 #Praveen Jayakumar, July 2023
 
 import numpy as np
@@ -6,8 +6,10 @@ from qrm_utils import filter_wt, leading_bit_index, get_eval_set, min_set, punct
 
 def apply_qubit_partition(i, m, qubit_list):
     #applies Plotkin-i partition of passed qubit_list
-    m = int(np.log2(len(qubit_list)))
-    row = get_QRM_generators_r1r2(1, 1, m)[m-i]
+    #0 - normal Plotkin partition.
+    assert i < m, 'Invalid partition specification.'
+
+    row = get_QRM_generators_r1r2(1, 1, m)[m-i-1]
     q1 = []
     q2 = []
     for j, q in enumerate(row):
@@ -19,8 +21,9 @@ def apply_qubit_partition(i, m, qubit_list):
 
 def apply_punc_qubit_partition(i, m, qubit_list, punc_bit_list = [0]):
     #applies Plotkin-i partition of passed qubit_list
+    assert i < m, 'Invalid partition specification.'
     
-    row = get_QRM_generators_r1r2(1, 1, m)[m-i]
+    row = get_QRM_generators_r1r2(1, 1, m)[m-i-1]
     p_row = puncture_row(row, punc_bit_list)
 
     q1 = []
@@ -112,7 +115,7 @@ def get_R(G):
     if k == 0:
         return [[]]
     indexes = [leading_bit_index(row) for row in G]
-    eval_sets = [get_eval_set(row) for row in G]
+    eval_sets = [get_eval_set(row, reversed=True) for row in G] #reversed since the rows of G are sorted for increasing leading bit position.
     r = max([len(s) for s in eval_sets])
     for i, se in enumerate(eval_sets):
         ms = min_set(se, r, as_int =True)

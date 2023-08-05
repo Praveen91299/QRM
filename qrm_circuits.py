@@ -122,7 +122,7 @@ def get_qubit_partition(m, qubit_list = None, partitions = []):
         qubit_list = list(range(2**m))
     
     if partitions != []:
-        ql_1, ql_2 = apply_qubit_partition(partitions[0], m, qubit_list)
+        ql_1, ql_2 = apply_qubit_partition(partitions[0], m, qubit_list=qubit_list)
         if len(partitions) > 1:
             p1 = partitions[1]
             if len(partitions) > 2:
@@ -132,7 +132,7 @@ def get_qubit_partition(m, qubit_list = None, partitions = []):
         else:
             p1, p2 = [], []
     else:
-        ql_1, ql_2 = qubit_list[:2**(m-1)], qubit_list[2**(m-1):]
+        ql_1, ql_2 = apply_qubit_partition(0, m, qubit_list=qubit_list)
         p1, p2 = [], []
     return ql_1, ql_2, p1, p2
 
@@ -151,11 +151,11 @@ def get_punc_qubit_partition(m, qubit_list=None, partitions=[], punc_bit_list=[0
         else:
             p1, p2 = [], []
     else:
-        ql_1, ql_2 = apply_punc_qubit_partition(1, m, qubit_list=qubit_list, punc_bit_list=punc_bit_list)
+        ql_1, ql_2 = apply_punc_qubit_partition(0, m, qubit_list=qubit_list, punc_bit_list=punc_bit_list)
         p1, p2 = [], []
     return ql_1, ql_2, p1, p2
 
-def add_entanglers(r1, r2, m, ql_1 = None, ql_2 = None, only_cnots = True):
+def add_entanglers(r1, r2, m, ql_1 = None, ql_2 = None, pos_dict1 = None, pos_dict2 = None, only_cnots = True):
     '''
     Add entanglers from ql_1 to ql_2 depending on leading bits of Gm(r1, r2, m). Set only_cnots = False for Hadamard gates on the first set
     ql_1, ql_2 of length 2**m
@@ -169,8 +169,13 @@ def add_entanglers(r1, r2, m, ql_1 = None, ql_2 = None, only_cnots = True):
     
     Gm = get_QRM_generators_r1r2(r1, r2, m)
     lbs = [leading_bit_index(row) for row in Gm]
-    qm1 = [ql_1[i] for i in lbs]
-    qm2 = [ql_2[i] for i in lbs]
+    if pos_dict1 is not None:
+        lb1 = get_dict_values(pos_dict1, keys = lbs)
+    if pos_dict2 is not None:
+        lb2 = get_dict_values(pos_dict2, keys = lbs)
+    
+    qm1 = [ql_1[i] for i in lb1]
+    qm2 = [ql_2[i] for i in lb2]
     if not only_cnots:
         U += tequila.gates.H(target=qm1)
     for a, b in zip(qm1, qm2):
@@ -178,10 +183,14 @@ def add_entanglers(r1, r2, m, ql_1 = None, ql_2 = None, only_cnots = True):
     
     return U
 
-def add_punc_entanglers(r1, r2, m, ql_1 = None, ql_2 = None, only_cnots = True):
+def add_punc_entanglers(r1, r2, m, ql_1 = None, ql_2 = None, pos_dict1 = None, pos_dict2 = None, only_cnots = True, puncture_Gp = False):
     '''
     Add entanglers for punctured codes
     Currently defaulted to first bit
+
+    ql_1/ql_2: qubit positions of the two halves in actual circuit
+    pos_dict1/pos_dict2: row reordering mapping {row/leading index: actual row index in permuted G}
+    puncture_Gp: to determine control indexes from punctured/unpunctured generator. Set False if index position already punctured.
     
     '''
     U = tequila.QCircuit()
@@ -191,13 +200,28 @@ def add_punc_entanglers(r1, r2, m, ql_1 = None, ql_2 = None, only_cnots = True):
     if ql_2 == None:
         ql_2 = list(range(2**m -1, 2**(m+1) - 1))
     
+    assert r2 >=r1, 'Invalid parameters r2 < r1.'
+
     if r1 <= 0:
-        print('Not handled right now.')
+        if r1 == 0:
+            print('Invalid parameter r1: 0 cannot be handled trivially.')
+        else:
+            print('Invalid parameter r1: {}'.format(r1))
         return
+    
     Gm = get_QRM_generators_r1r2(r1, r2, m)
-    Gp = puncture_matrix(Gm, remove_ind=[0])
+    if puncture_Gp:
+        Gp = puncture_matrix(Gm, remove_ind=[0])
+    else:
+        Gp = Gm
+    
     lb1 = [leading_bit_index(row) for row in Gp]
     lb2 = [leading_bit_index(row) for row in Gm]
+    if pos_dict1 is not None:
+        lb1 = get_dict_values(pos_dict1, keys = lb1)
+    if pos_dict2 is not None:
+        lb2 = get_dict_values(pos_dict2, keys = lb2)
+    
     qm1 = [ql_1[i] for i in lb1]
     qm2 = [ql_2[i] for i in lb2]
     if not only_cnots:
@@ -221,7 +245,7 @@ def QRM_rec_classical_circuit(r, m, partitions = [], qubit_list = None):
     U = tequila.QCircuit()
 
     if m == 0 or r == -1:
-        return U, None
+        return U, {0 : 0}
 
     if r > m or m < 0 or r < -1:
         print('Invalid parameters r, m : {}, {}'.format(r, m))
@@ -231,29 +255,33 @@ def QRM_rec_classical_circuit(r, m, partitions = [], qubit_list = None):
     ql_1, ql_2, p1, p2 = get_qubit_partition(m, qubit_list=qubit_list, partitions=partitions)
 
     if r == m:
-        U += add_entanglers(0, r-1, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots=True)
+        U1, position_dict1 = QRM_rec_classical_circuit(r-1, m-1, partitions=p1, qubit_list=ql_1)
+        U2, position_dict2 = QRM_rec_classical_circuit(r-1, m-1, partitions=p2, qubit_list=ql_2)
 
-        U1, info_1 = QRM_rec_circuit(r-1, m-1, partitions=p1, qubit_list=ql_1)
-        U2, info_2 = QRM_rec_circuit(r-1, m-1, partitions=p2, qubit_list=ql_2)
+        U += add_entanglers(0, r-1, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots=True)
         U = U + U1 + U2
-        return U, None
-        
-    U1, info_1 = QRM_rec_classical_circuit(r, m-1, partitions=p1, qubit_list=ql_1)
-    U2, info_2 = QRM_rec_classical_circuit(r, m-1, partitions=p2, qubit_list=ql_2)
-    
-    U += add_entanglers(0, r, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots=True)
 
+        position_dict2 = add_key_value_dict(position_dict2, 2**(m-1), len(position_dict1.keys()))
+        position_dict_new = add_dict(position_dict1, position_dict2)
+        return U, position_dict_new
+        
+    U1, position_dict1 = QRM_rec_classical_circuit(r, m-1, partitions=p1, qubit_list=ql_1)
+    U2, position_dict2 = QRM_rec_classical_circuit(r, m-1, partitions=p2, qubit_list=ql_2)
+    
+    U += add_entanglers(0, r, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots=True)
     U += U1
     U += U2
-    return U, None    
+
+    position_dict2 = add_key_value_dict(position_dict2, 2**(m-1), len(position_dict1.keys()))
+    position_dict_new = add_dict(position_dict1, position_dict2)
+
+    return U, position_dict_new 
 
 def QRM_rec_circuit(r, m, partitions = [], qubit_list = None, only_cnots = False):
 
     U = tequila.QCircuit()
-    msg_q = []
-    ent_q = []
     if m == 0:
-        return U, (qubit_list, [])
+        return U, {0 : 0}
     
     if r > m or r < m-r-1:
         print('Invalid parameters r, m : {}, {}'.format(r, m))
@@ -264,26 +292,29 @@ def QRM_rec_circuit(r, m, partitions = [], qubit_list = None, only_cnots = False
     
     ql_1, ql_2, p1, p2 = get_qubit_partition(m, qubit_list=qubit_list, partitions=partitions)
 
+    U1, position_dict1 = QRM_rec_circuit(r, m-1, partitions=p1, qubit_list=ql_1, only_cnots=only_cnots)
+    U2, position_dict2 = QRM_rec_circuit(r, m-1, partitions=p2, qubit_list=ql_2, only_cnots=only_cnots)
+
     if r > m-r-1:
         #add message ents
-        U += add_entanglers(m-r, r, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots=True)
+        U += add_entanglers(m-r, r, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots=True)
     
     #add entanglers
-    U += add_entanglers(m-r-1, m-r-1, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots=only_cnots)
-
-    U1, info_1 = QRM_rec_circuit(r, m-1, partitions=p1, qubit_list=ql_1, only_cnots=only_cnots)
-    U2, info_2 = QRM_rec_circuit(r, m-1, partitions=p2, qubit_list=ql_2, only_cnots=only_cnots)
+    U += add_entanglers(m-r-1, m-r-1, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots=only_cnots)
 
     U += U1
     U += U2
     
-    return U, None
+    position_dict2 = add_key_value_dict(position_dict2, to_add_key=2**(m-1), to_add_value=len(position_dict1.keys()))
+    position_dict_new = add_dict(position_dict1, position_dict2)
+
+    return U, position_dict_new
 
 def QRM_rec_assym_circuit(r, m, r_in, m_in, partitions = [], qubit_list = None, only_cnots = False):
     U = tequila.QCircuit()
     
     if m == 0:
-        return U, (qubit_list, [])
+        return U, {0: 0}
     
     if r > m or r < -1:
         print('Invalid parameters r, m : {}, {}'.format(r, m))
@@ -291,33 +322,33 @@ def QRM_rec_assym_circuit(r, m, r_in, m_in, partitions = [], qubit_list = None, 
     
     if 2*r_in + 1 <= m_in:
         if r == -1:
-            Uc, info = QRM_rec_classical_circuit(r_in, m, partitions=partitions, qubit_list=qubit_list)
-            return Uc, None
+            return QRM_rec_classical_circuit(r_in, m, partitions=partitions, qubit_list=qubit_list)  
     if 2*r_in + 1 > m_in:
         if m == r_in:
-            #add Hadamards
             if not only_cnots:
                 U += add_hadamards(0, 2*r_in - m_in, m, qubit_list=qubit_list)
-            #classical circuit
-            Uc, i = QRM_rec_classical_circuit(r_in, r_in, partitions=partitions, qubit_list=qubit_list)
-            return U + Uc, None
+            Uc, position_dict = QRM_rec_classical_circuit(r_in, r_in, partitions=partitions, qubit_list=qubit_list)
+            return U + Uc, position_dict
     
     ql_1, ql_2, p1, p2 = get_qubit_partition(m, qubit_list=qubit_list, partitions=partitions)
     
+    U1, position_dict1 = QRM_rec_assym_circuit(r-1, m-1, r_in, m_in, partitions=p1, qubit_list=ql_1, only_cnots=only_cnots)
+    U2, position_dict2 = QRM_rec_assym_circuit(r-1, m-1, r_in, m_in, partitions=p2, qubit_list=ql_2, only_cnots=only_cnots)
+
     if r != r_in:
-        U += add_entanglers(r+1, r_in, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots = True)
-        U += add_entanglers(r, r, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots=only_cnots)
+        U += add_entanglers(r+1, r_in, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots = True)
+        U += add_entanglers(r, r, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots=only_cnots)
     else:
         #initial entanglers
-        U += add_entanglers(r, r_in, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots = only_cnots)
+        U += add_entanglers(r, r_in, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots = only_cnots)
     
-    U1, info_1 = QRM_rec_assym_circuit(r-1, m-1, r_in, m_in, partitions=p1, qubit_list=ql_1, only_cnots=only_cnots)
-    U2, info_2 = QRM_rec_assym_circuit(r-1, m-1, r_in, m_in, partitions=p2, qubit_list=ql_2, only_cnots=only_cnots)
-
     U += U1
     U += U2
 
-    return U, None
+    position_dict2 = add_key_value_dict(position_dict2, to_add_key=2**(m-1), to_add_value=len(position_dict1.keys()))
+    position_dict_new = add_dict(position_dict1, position_dict2)
+
+    return U, position_dict_new
 
 def QRM_rec_punc_circuit(r, m, partitions = [], qubit_list = None, only_cnots = False, state_prep = False):
     '''
@@ -333,33 +364,59 @@ def QRM_rec_punc_circuit(r, m, partitions = [], qubit_list = None, only_cnots = 
     
     ql_1, ql_2, p1, p2 = get_punc_qubit_partition(m, qubit_list=qubit_list, partitions=partitions, punc_bit_list=punc_bit_list)
 
-    if m == r + 1:
-        #add U^*(r, r+1)
-        if r == 0:
-            return U, None
-        Up, info = QRM_rec_punc_circuit(r-1, m-1, partitions=p1, qubit_list=ql_1, only_cnots=True, state_prep=state_prep)
-        U += Up
+    if state_prep:
+        #no need 111..11, so can go till m = r
+        return
+    else:
+        if m == r + 1: #U^*(r, r+1)
+            if r == 0: #[1]
+                return U, {0: 0}
+            
+            U1, position_dict = QRM_rec_punc_circuit(r-1, m-1, partitions=p1, qubit_list=ql_1, only_cnots=True, state_prep=state_prep)
+            U2, position_dict2 = QRM_rec_classical_circuit(r-1, r, partitions=p2, qubit_list=ql_2)
 
-        U += tequila.gates.CX(control=ql_1[-1], target=ql_2[-1])
-        Uc, info = QRM_rec_classical_circuit(r, r, partitions=p2, qubit_list=ql_2)
-        U += Uc
-        return U, None
+            Gr = Grm(r-1, r)
+            targets = [get_set_int(get_eval_set(row, reversed=True)) for row in Gr]
+            target_dict = {target: i for i, target in enumerate(targets)}
+
+            #add entanglers, no hadamards
+            controls = get_dict_values(position_dict, targets)
+            qm1 = [ql_1[a] for a in controls]
+            qm2 = [ql_2[a] for a in targets]
+            for a, b in zip(qm1, qm2):
+                U += tequila.gates.CX(control=a, target=b)
+            
+            U += U1
+            U += tequila.gates.CX(control=ql_2[-1], target=ql_1[-1])
+            U += U2
+
+            target_dict = add_key_value_dict(target_dict, to_add_key=2**r, to_add_value=len(position_dict.keys()))
+            position_dict_new = add_dict(position_dict, target_dict)
+            position_dict_new[2**r - 1] = 2**(r+1) - 2
+
+            return U, position_dict_new
     
+    U1, position_dict1 = QRM_rec_punc_circuit(r, m-1, partitions=p1, qubit_list=ql_1, only_cnots=only_cnots)
+    U2, position_dict2 = QRM_rec_circuit(r, m-1, partitions=p2, qubit_list=ql_2, only_cnots=only_cnots)
+
+    #target_dict = {target: i for i, target in enumerate(targets)}
     if r > m-r-1:
         #add message ents
-        U += add_punc_entanglers(m-r, r, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots=True)
+        U += add_punc_entanglers(m-r, r, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots=True, puncture_Gp=False)
     
     #add entanglers
-    U += add_punc_entanglers(m-r-1, m-r-1, m-1, ql_1=ql_1, ql_2=ql_2, only_cnots=only_cnots)
-    
-    U1, info_1 = QRM_rec_punc_circuit(r, m-1, partitions=p1, qubit_list=ql_1, only_cnots=only_cnots)
-    U2, info_2 = QRM_rec_circuit(r, m-1, partitions=p2, qubit_list=ql_2, only_cnots=only_cnots)
+    U += add_punc_entanglers(m-r-1, m-r-1, m-1, ql_1=ql_1, ql_2=ql_2, pos_dict1=position_dict1, pos_dict2=position_dict2, only_cnots=only_cnots, puncture_Gp=False)
 
     U += U1
     U += U2
 
-    return U, None
+    position_dict2 = add_key_value_dict(position_dict2, to_add_key=2**(m-1), to_add_value=len(position_dict1.keys()))
+    position_dict_new = add_dict(position_dict1, position_dict2)
+    
+    return U, position_dict_new
 
-def QRM_rec_assym_punc_circuit(r, m, r_in, m_in, partitions = [], qubit_list = None, only_cnots = False):
+def QRM_rec_assym_punc_circuit(r, m, r_in, m_in, partitions = [], qubit_list = None, only_cnots = False, state_prep = False):
+
+    assert r >0 or r >=m, print('Invalid parameter r: {}'.format(r))
     
     return

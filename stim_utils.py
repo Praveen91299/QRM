@@ -1,3 +1,5 @@
+#utilities for simulation with stim
+#Praveen Jayakumar, July 2023
 import stim
 
 def stim_CNOT_list(controls, targets):

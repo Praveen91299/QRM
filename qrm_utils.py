@@ -1,4 +1,4 @@
-#code for QRM gate counts and circuit constructions
+#Utilities for QRM gate counts and circuit constructions
 #Praveen Jayakumar, July 2023
 
 import math
@@ -6,6 +6,7 @@ import numpy as np
 import copy
 import tequila
 from qiskit import QuantumCircuit
+from qiskit.tools.visualization import circuit_drawer
 
 def binom_sum(m,start,end):
     #includes start and end
@@ -42,26 +43,151 @@ def leading_bit_index(row):
             return i
     return N-1
 
-def get_eval_set(row):
+def get_eval_set(row, reversed = False):
+    '''
+    Returns the evaluation set for a evaluation vector  
+    [0 0 0 1 0 0 0 1] = Eval^3(x_1x_2) returns [1, 2]  
+    [0 0 0 0 0 0 1 1] = Eval^3(x_0x_1) returns [0, 1]  
+
+    x subscript starting with x_0
+    '''
     m = int(np.log2(len(row)))
     i = leading_bit_index(row)
-    bin_i = bin(i)[2:]
+    return get_int_set(i, m, reversed=reversed)
+
+def get_int_set(i, m, reversed = False):
+    '''
+    Returns set representation of i, ie the bit positions non-zero of bin(i)
+    reverse: reversed bit positions
+
+    i = 6, m = 5 bin(6) = 00110
+    reversed = True returns [1, 2]
+    reversed = False return [2, 3]
+    '''
+
+    assert i < 1<<m, print('Invalid parameter i: {}'.format(i))
+
     s = []
     n = 0
     while i > 0:
         if i%2 ==1:
-            s.append(n)
+            if reversed:
+                s.append(n)
+            else:
+                s.append(m - n - 1)
         i = i//2
         n+=1
+    if not reversed:
+        s.reverse()
     return s
 
-def get_int(l):
+def get_list_int(l):
+    return
+
+def add_to_set(s, to_add = []):
     '''
-    int representation of list [1, 0, 1, 0] is 5
+    Adds elements of to_add to s and extends m to m+1
+
+    s = [0, 1, 3] to_add = [1] returns [0, 1, 2, 4]
     '''
-    return np.sum([1<<i for i in l])
+    if to_add == []:
+        return s
+    
+    l = get_set_list(s)
+    for ind in to_add:
+        l.insert(ind, 1)
+    return get_list_set(l)
+
+def get_list_set(l):
+    s = []
+    for ind, i in enumerate(l):
+        if i == 1:
+            s.append(ind)
+    return s
+        
+def add_to_list_elements(l = [], i = 0):
+    '''
+    shift list elements by i
+    '''
+    return [a + i for a in l]
+
+def add_to_dict_elements(dict_, i = 0):
+    '''
+    Add to the dictionaru elements
+
+    '''
+    dict_new = {}
+    for k, v in zip(dict_.keys(), dict_.values()):
+        dict_new[k] = v + i
+    return dict_new
+
+def add_dict(dict_1, dict_2):
+    '''
+    Combine two python dictionaries
+
+    Defualts to combining values into list if same key, 
+    '''
+    dict_new = {}
+    for k in dict_1.keys():
+        dict_new[k] = dict_1[k]
+    
+    for k, v in zip(dict_2.keys(), dict_2.values()):
+        if k in dict_1.keys():
+            dict_new[k] = [dict_1[k], v]
+        else:
+            dict_new[k] = v
+    return dict_new
+
+def get_dict_values(dict_, keys = []):
+    '''
+    Return values given by keys from dict_
+    Skips if key value not present
+    '''
+    values = []
+    for k in keys:
+        values.append(dict_[k])
+    return values
+
+def add_ind_to_key_ind(dict_, m, to_add = [0], reversed = True):
+    '''
+    Add the 
+    '''
+    dict_new = {}
+    for k, v in zip(dict_.keys(), dict_.values()):
+        k_new = get_set_int(add_to_set(get_int_set(k, m = m, reversed=reversed), to_add))
+        dict_new[k_new] = v
+    return dict_new
+
+def add_key_value_dict(dict_, to_add_key = 0, to_add_value = 0):
+    '''
+    Adds to key and value of dictionary
+    '''
+    return {ind + to_add_key: pos + to_add_value for ind, pos in zip(dict_.keys(), dict_.values())}
+
+def get_set_int(l):
+    '''
+    Returns integer representation of set of monomial subscripts
+
+    int representation of set [0, 2] is 5
+    int representation of [] (Eval(1)) is 0
+    '''
+    return int(np.sum([1<<i for i in l]))
+
+def get_set_list(s, m = None):
+    '''
+    Returns list indicating 
+    '''
+    int_ = get_set_int(s)
+    bin_i = bin(int_)[2:]
+    l = [int(b) for b in bin_i]
+    l.reverse()
+    return l
 
 def min_set(in_ind, r, as_int = False):
+    '''
+    Returns minimum superset of in_ind with cardinality r
+    as_int if True returns the int representation of the superset
+    '''
     ind = copy.copy(in_ind)
     s = [copy.copy(ind)]
     for i in range(len(ind) + r):
@@ -72,7 +198,7 @@ def min_set(in_ind, r, as_int = False):
             s = new + s
             ind.append(i)
     if as_int:
-        return [get_int(se) for se in s]
+        return [get_set_int(se) for se in s]
     return s
 
 def get_qiskit_circuit(circuit):
@@ -80,8 +206,15 @@ def get_qiskit_circuit(circuit):
     qiskit_cir = QuantumCircuit.from_qasm_str(qasmstr)
     return qiskit_cir
 
+def draw_tequila_circuit(circuit):
+    qc = get_qiskit_circuit(circuit)
+    return circuit_drawer(qc, fold=-1)
+
 def check_if_same_circuit(circuit_1, circuit_2, tol = 1e-6):
-    #checks if two tequila circuits are the same by simulating
+    '''
+    checks if two tequila circuits are the same by simulating
+    #todo: do this with stim for more qubits and faster simulation.
+    '''
     wf1 = tequila.simulate(circuit_1)
     wf2 = tequila.simulate(circuit_2)
     wf3 = wf1 - wf2
@@ -89,6 +222,9 @@ def check_if_same_circuit(circuit_1, circuit_2, tol = 1e-6):
     return diff < tol
 
 def puncture_row(row, remove_ind = [0]):
+    '''
+    Puncture row by removing indices listed in remove_ind
+    '''
     new_row = []
     for i, r in enumerate(row):
         if i not in remove_ind:
@@ -96,4 +232,7 @@ def puncture_row(row, remove_ind = [0]):
     return new_row
 
 def puncture_matrix(M, remove_ind = [0]):
+    '''
+    Puncture matrix by removing columns specified by remove_ind
+    '''
     return [puncture_row(row, remove_ind=remove_ind) for row in M]
