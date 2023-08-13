@@ -206,9 +206,9 @@ def get_qiskit_circuit(circuit):
     qiskit_cir = QuantumCircuit.from_qasm_str(qasmstr)
     return qiskit_cir
 
-def draw_tequila_circuit(circuit):
+def draw_tequila_circuit(circuit, justify = 'left'):
     qc = get_qiskit_circuit(circuit)
-    return circuit_drawer(qc, fold=-1)
+    return circuit_drawer(qc, fold=-1, justify = justify)
 
 def check_if_same_circuit(circuit_1, circuit_2, tol = 1e-6):
     '''
@@ -236,3 +236,34 @@ def puncture_matrix(M, remove_ind = [0]):
     Puncture matrix by removing columns specified by remove_ind
     '''
     return [puncture_row(row, remove_ind=remove_ind) for row in M]
+
+def connectivity(circuit, n_qubit):
+    '''
+    Returns (list((control connectivity, target connectivity)), Ed)
+    Assuming input circuit with only CNOT gates
+
+    ''' 
+    if len(circuit.gates) == 0:
+        return [{'x': set(), 'z': set()} for _ in range(n_qubit)], 0
+    
+    #recursively call
+    gate = circuit.gates[0]
+    rec_circuit = tequila.QCircuit(gates = circuit.gates[1:])
+    conn_res, Ed = connectivity(rec_circuit, n_qubit)
+
+    #add gate
+    assert gate.name.lower() == 'x', 'Gate not CNOT, error.'
+    assert len(gate.control) == 1, 'Gate has incorrect controls'
+    assert len(gate.target) == 1, 'Gate has incorrect targets'
+    
+    control = gate.control[0]
+    target = gate.target[0]
+
+    #combine
+    conn_res[control]['x'] = conn_res[control]['x'].union(conn_res[target]['x'])
+    conn_res[control]['x'].add(target)
+    conn_res[target]['z'] = conn_res[target]['z'].union(conn_res[control]['z'])
+    conn_res[target]['z'].add(control)
+
+    Ed = np.average([len(conn_res[i]['x'].union(conn_res[i]['z'])) for i in range(n_qubit)])
+    return conn_res, Ed
