@@ -37,10 +37,10 @@ def apply_punc_qubit_partition(i, m, qubit_list, punc_bit_list = [0]):
 
 def get_full_matrix(m):
     """
-    Full tensored matrix [[1, 1], [0, 1]]^\otimes m
+    Full Hadamard tensored matrix [[1, 1], [0, 1]]^\otimes m
     """
     B = [[1, 1], [0, 1]]
-    F = [1]
+    F = [[1]]
     for _ in range(m):
         F = np.kron(F, B)
     return F
@@ -103,6 +103,17 @@ def get_QRM_generators_r1r2(r1, r2, m):
         return [[1]]
     G1 = Grm(r2, m)
     G1q = filter_wt(G1, weights = [2**(m-i) for i in range(r1, r2 + 1)])
+    return G1q
+
+def GeneratorQuotient(r1, r2, m):
+    """
+    Returns G(r1, m)\G(r2, m)
+    """
+    if r1 == r2 or r1 < r2:
+        return []
+    G1 = Grm(r1, m)
+
+    G1q = filter_wt(G1, weights = [2**(m-i) for i in range(r2+1, r1+1)])
     return G1q
 
 def get_R(G):
